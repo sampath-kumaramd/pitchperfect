@@ -1,14 +1,34 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { getSession } from '@/lib/storage';
 
-// TODO: Implement GET handler to retrieve session data from Vercel KV
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const session = await getSession(id);
 
-interface RouteContext {
-  params: Promise<{
-    id: string;
-  }>;
-}
+    if (!session) {
+      return NextResponse.json(
+        {
+          error: 'Session not found',
+          code: 'NOT_FOUND',
+        },
+        { status: 404 }
+      );
+    }
 
-export async function GET(request: NextRequest, context: RouteContext) {
-  const { id } = await context.params;
-  return NextResponse.json({ message: 'Session retrieval placeholder' });
+    return NextResponse.json(session, { status: 200 });
+  } catch (error) {
+    console.error('[API /sessions/[id]]', error);
+
+    return NextResponse.json(
+      {
+        error: 'Internal server error',
+        code: 'INTERNAL_ERROR',
+      },
+      { status: 500 }
+    );
+  }
 }
