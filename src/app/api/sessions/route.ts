@@ -5,6 +5,9 @@ import type { ConversationConfig } from '@/types/session';
 import { createSession } from '@/lib/storage';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { generateId } from '@/lib/utils';
+import { validateEnv } from '@/lib/env';
+
+validateEnv();
 
 const CreateSessionSchema = z.object({
   userName: z.string().min(2).max(50).trim(),
