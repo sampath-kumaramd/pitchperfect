@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,8 +17,9 @@ interface ValidationErrors {
   persona?: string;
 }
 
-export function SetupForm() {
+function SetupFormContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [userName, setUserName] = useState('');
   const [presentationTitle, setPresentationTitle] = useState('');
   const [presentationContext, setPresentationContext] = useState('');
@@ -27,6 +28,27 @@ export function SetupForm() {
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    const urlUserName = searchParams.get('userName');
+    const urlTitle = searchParams.get('title');
+    const urlContext = searchParams.get('context');
+    const urlPersona = searchParams.get('persona') as PersonaType | null;
+    const urlDuration = searchParams.get('duration');
+
+    if (urlUserName) setUserName(urlUserName);
+    if (urlTitle) setPresentationTitle(urlTitle);
+    if (urlContext) setPresentationContext(urlContext);
+    if (urlPersona && ['friendly', 'professional', 'critical'].includes(urlPersona)) {
+      setPersona(urlPersona);
+    }
+    if (urlDuration) {
+      const duration = parseInt(urlDuration, 10);
+      if (!isNaN(duration) && duration >= 1 && duration <= 30) {
+        setDurationMinutes(duration);
+      }
+    }
+  }, [searchParams]);
 
   function validateUserName(value: string): string | undefined {
     if (value.length < 2) {
@@ -231,5 +253,28 @@ export function SetupForm() {
         )}
       </Button>
     </form>
+  );
+}
+
+export function SetupForm() {
+  return (
+    <Suspense fallback={<div className="animate-pulse space-y-6">
+      <div className="space-y-2">
+        <div className="h-5 w-24 rounded bg-gray-200"></div>
+        <div className="h-10 w-full rounded bg-gray-200"></div>
+      </div>
+      <div className="space-y-2">
+        <div className="h-5 w-40 rounded bg-gray-200"></div>
+        <div className="h-10 w-full rounded bg-gray-200"></div>
+      </div>
+      <div className="space-y-2">
+        <div className="h-5 w-48 rounded bg-gray-200"></div>
+        <div className="h-24 w-full rounded bg-gray-200"></div>
+      </div>
+      <div className="h-32 w-full rounded bg-gray-200"></div>
+      <div className="h-10 w-full rounded bg-gray-200"></div>
+    </div>}>
+      <SetupFormContent />
+    </Suspense>
   );
 }

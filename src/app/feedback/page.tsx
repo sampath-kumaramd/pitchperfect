@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useSessionStore } from '@/stores/session-store';
 import type { FeedbackResponse } from '@/types/feedback';
@@ -10,19 +10,26 @@ import { FeedbackSection } from '@/components/feedback/FeedbackSection';
 import { SessionSummary } from '@/components/feedback/SessionSummary';
 import { ShareButton } from '@/components/feedback/ShareButton';
 
-export default function FeedbackPage() {
+function FeedbackContent() {
   const router = useRouter();
-  const { sessionId, config } = useSessionStore();
+  const searchParams = useSearchParams();
+  const { sessionId: storeSessionId, config } = useSessionStore();
   const [feedback, setFeedback] = useState<FeedbackResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadFeedback() {
+      const urlSessionId = searchParams.get('sessionId');
+      const sessionId = storeSessionId || urlSessionId;
+
       if (!sessionId) {
-        router.push('/');
+        router.push('/setup');
         return;
       }
+
+      setActiveSessionId(sessionId);
 
       try {
         setLoading(true);
@@ -37,34 +44,33 @@ export default function FeedbackPage() {
         const data = await response.json();
         setFeedback(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Could not load feedback');
+        setError(err instanceof Error ? err.message : 'Could not load feedback. The session may have expired.');
       } finally {
         setLoading(false);
       }
     }
 
     loadFeedback();
-  }, [sessionId, router]);
+  }, [storeSessionId, searchParams, router]);
 
-  function handleRetry() {
-    if (!sessionId) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    fetch(`/api/sessions/${sessionId}/feedback`)
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to load feedback');
-        return res.json();
-      })
-      .then(data => {
-        setFeedback(data);
-        setLoading(false);
-      })
-      .catch(err => {
-        setError(err instanceof Error ? err.message : 'Could not load feedback');
-        setLoading(false);
-      });
+  function handleTryAgain() {
+    if (!config) {
+      router.push('/setup');
+      return;
+    }
+
+    const params = new URLSearchParams({
+      userName: config.userName,
+      title: config.presentationTitle,
+      persona: config.persona,
+      duration: Math.round(config.durationSeconds / 60).toString(),
+    });
+
+    if (config.presentationContext) {
+      params.set('context', config.presentationContext);
+    }
+
+    router.push(`/setup?${params.toString()}`);
   }
 
   if (loading) {
@@ -80,9 +86,20 @@ export default function FeedbackPage() {
               ))}
             </div>
             
-            <div className="h-48 rounded-lg bg-gray-200"></div>
-            <div className="h-64 rounded-lg bg-gray-200"></div>
-            <div className="h-64 rounded-lg bg-gray-200"></div>
+            <div className="space-y-4">
+              <div className="h-6 w-48 rounded bg-gray-200"></div>
+              <div className="h-32 rounded-lg bg-gray-200"></div>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="h-6 w-48 rounded bg-gray-200"></div>
+              <div className="h-48 rounded-lg bg-gray-200"></div>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="h-6 w-48 rounded bg-gray-200"></div>
+              <div className="h-48 rounded-lg bg-gray-200"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -94,20 +111,16 @@ export default function FeedbackPage() {
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 px-4">
         <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
           <h2 className="mb-4 text-2xl font-bold text-gray-900">Could not load feedback</h2>
-          <p className="mb-6 text-gray-600">{error || 'An unexpected error occurred'}</p>
+          <p className="mb-6 text-gray-600">
+            {error || 'Could not load feedback. The session may have expired.'}
+          </p>
           
           <div className="flex gap-4">
-            <button
-              onClick={handleRetry}
+            <Link
+              href="/setup"
               className="rounded-lg bg-indigo-600 px-6 py-3 font-medium text-white transition-colors hover:bg-indigo-700"
             >
-              Retry
-            </button>
-            <Link
-              href="/"
-              className="rounded-lg border border-gray-300 bg-white px-6 py-3 font-medium text-gray-700 transition-colors hover:bg-gray-50"
-            >
-              Go Home
+              Start New Session
             </Link>
           </div>
         </div>
@@ -148,15 +161,54 @@ export default function FeedbackPage() {
         />
 
         <div className="flex justify-center gap-4">
-          <Link
-            href="/"
+          <button
+            onClick={handleTryAgain}
             className="rounded-lg border border-gray-300 bg-white px-6 py-3 font-medium text-gray-700 transition-colors hover:bg-gray-50"
           >
             Try Again
-          </Link>
-          {sessionId && <ShareButton sessionId={sessionId} />}
+          </button>
+          {activeSessionId && <ShareButton sessionId={activeSessionId} />}
         </div>
       </div>
     </div>
+  );
+}
+
+export default function FeedbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 px-4 py-12">
+          <div className="mx-auto max-w-4xl space-y-8">
+            <div className="animate-pulse space-y-8">
+              <div className="h-16 w-64 rounded-lg bg-gray-200"></div>
+              
+              <div className="grid grid-cols-3 gap-6">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="h-32 rounded-lg bg-gray-200"></div>
+                ))}
+              </div>
+              
+              <div className="space-y-4">
+                <div className="h-6 w-48 rounded bg-gray-200"></div>
+                <div className="h-32 rounded-lg bg-gray-200"></div>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="h-6 w-48 rounded bg-gray-200"></div>
+                <div className="h-48 rounded-lg bg-gray-200"></div>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="h-6 w-48 rounded bg-gray-200"></div>
+                <div className="h-48 rounded-lg bg-gray-200"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <FeedbackContent />
+    </Suspense>
   );
 }
