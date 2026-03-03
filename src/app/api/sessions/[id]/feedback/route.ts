@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import type { SessionMetrics } from '@/types/feedback';
 import type { TranscriptEntry } from '@/types/session';
-import { getSession, saveFeedback } from '@/lib/storage';
+import { getSession, saveFeedback, getFeedback } from '@/lib/storage';
 import { generateFeedback } from '@/lib/feedback/generate';
 
 const TranscriptEntrySchema = z.object({
@@ -23,6 +23,38 @@ const FeedbackRequestSchema = z.object({
   transcript: z.array(TranscriptEntrySchema),
   metrics: SessionMetricsSchema,
 });
+
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const feedback = await getFeedback(id);
+
+    if (!feedback) {
+      return NextResponse.json(
+        {
+          error: 'Feedback not found',
+          code: 'NOT_FOUND',
+        },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(feedback, { status: 200 });
+  } catch (error) {
+    console.error('[API GET /sessions/[id]/feedback]', error);
+
+    return NextResponse.json(
+      {
+        error: 'Internal server error',
+        code: 'INTERNAL_ERROR',
+      },
+      { status: 500 }
+    );
+  }
+}
 
 export async function POST(
   request: Request,
