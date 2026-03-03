@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { PersonaPicker } from '@/components/setup/PersonaPicker';
 import { DurationSlider } from '@/components/setup/DurationSlider';
+import { track } from '@/lib/analytics';
 import type { PersonaType } from '@/types/persona';
 
 interface ValidationErrors {
@@ -28,6 +29,7 @@ function SetupFormContent() {
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const formStartedTracked = useRef(false);
 
   useEffect(() => {
     const urlUserName = searchParams.get('userName');
@@ -110,6 +112,13 @@ function SetupFormContent() {
     setErrors(newErrors);
   }
 
+  function handleFirstFieldFocus() {
+    if (!formStartedTracked.current) {
+      track('setup_form_started');
+      formStartedTracked.current = true;
+    }
+  }
+
   function isFormValid(): boolean {
     const userNameError = validateUserName(userName);
     const titleError = validatePresentationTitle(presentationTitle);
@@ -151,10 +160,18 @@ function SetupFormContent() {
       });
 
       if (!response.ok) {
+        if (response.status === 429) {
+          track('rate_limit_hit');
+        }
         throw new Error('Failed to create session');
       }
 
       const data = await response.json();
+      track('session_started', { 
+        sessionId: data.sessionId, 
+        persona, 
+        duration: durationMinutes 
+      });
       router.push(`/session?sessionId=${data.sessionId}`);
     } catch (error) {
       console.error('Error creating session:', error);
@@ -172,6 +189,7 @@ function SetupFormContent() {
           placeholder="Your name"
           value={userName}
           onChange={(e) => setUserName(e.target.value)}
+          onFocus={handleFirstFieldFocus}
           onBlur={() => handleBlur('userName')}
           className={errors.userName && touched.has('userName') ? 'border-red-600' : ''}
         />
@@ -217,6 +235,7 @@ function SetupFormContent() {
         <PersonaPicker
           selected={persona}
           onSelect={(selectedPersona) => {
+            track('persona_selected', { persona: selectedPersona });
             setPersona(selectedPersona);
             setTouched((prev) => new Set(prev).add('persona'));
             setErrors((prev) => ({ ...prev, persona: undefined }));

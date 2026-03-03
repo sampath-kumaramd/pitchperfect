@@ -1,6 +1,14 @@
+'use client';
+
+import { useEffect } from 'react';
 import Link from 'next/link';
+import { track } from '@/lib/analytics';
 
 export default function Home() {
+  useEffect(() => {
+    track('page_viewed', { page: 'landing' });
+  }, []);
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-white to-indigo-50">
       <main className="flex flex-col items-center text-center px-8 py-16 max-w-3xl">

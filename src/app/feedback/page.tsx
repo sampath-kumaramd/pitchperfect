@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useSessionStore } from '@/stores/session-store';
+import { track } from '@/lib/analytics';
 import type { FeedbackResponse } from '@/types/feedback';
 import { ScoreCard } from '@/components/feedback/ScoreCard';
 import { FeedbackSection } from '@/components/feedback/FeedbackSection';
@@ -43,6 +44,13 @@ function FeedbackContent() {
 
         const data = await response.json();
         setFeedback(data);
+        
+        track('feedback_generated', { 
+          sessionId, 
+          clarity: data.scores.clarity, 
+          confidence: data.scores.confidence, 
+          structure: data.scores.structure 
+        });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not load feedback. The session may have expired.');
       } finally {
@@ -54,6 +62,10 @@ function FeedbackContent() {
   }, [storeSessionId, searchParams, router]);
 
   function handleTryAgain() {
+    if (activeSessionId) {
+      track('session_retried', { sessionId: activeSessionId });
+    }
+    
     if (!config) {
       router.push('/setup');
       return;

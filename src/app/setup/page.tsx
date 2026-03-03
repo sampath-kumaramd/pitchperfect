@@ -1,8 +1,14 @@
 'use client';
 
+import { useEffect } from 'react';
 import { SetupForm } from '@/components/setup/SetupForm';
+import { track } from '@/lib/analytics';
 
 export default function SetupPage() {
+  useEffect(() => {
+    track('page_viewed', { page: 'setup' });
+  }, []);
+
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-gray-50">
       <div className="w-full max-w-2xl">

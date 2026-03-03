@@ -12,6 +12,7 @@ import { useSessionStore } from '@/stores/session-store';
 import { useTranscriptStore } from '@/stores/transcript-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { calculateWPM } from '@/lib/audio/analysis';
+import { track } from '@/lib/analytics';
 
 const RECONNECT_ATTEMPTS = 3;
 const RECONNECT_INTERVAL_MS = 2000;
@@ -207,6 +208,13 @@ function SessionPageContent() {
 
       provider.onError((err) => {
         console.error('[Session] Provider error:', err);
+        if (sessionId) {
+          track('session_error', { 
+            sessionId, 
+            errorType: err.message.includes('WebSocket') ? 'websocket' : 'provider',
+            errorMessage: err.message 
+          });
+        }
         if (err.message.includes('WebSocket')) {
           handleWebSocketDisconnect();
         } else {
@@ -242,6 +250,7 @@ function SessionPageContent() {
       } catch (micError) {
         if (micError instanceof Error) {
           if (micError.message.includes('permission denied')) {
+            track('mic_permission_denied', { browser: navigator.userAgent });
             setErrorType('mic');
             setError(`Microphone access denied.\n\n${getMicPermissionInstructions()}`);
           } else {
@@ -362,6 +371,19 @@ function SessionPageContent() {
           if (!sessionId) {
             throw new Error('No session ID');
           }
+
+          const totalWords = entries.reduce((sum, entry) => {
+            if (entry.role === 'user') {
+              return sum + (entry.text?.split(/\s+/).filter(w => w.length > 0).length || 0);
+            }
+            return sum;
+          }, 0);
+
+          track('session_completed', { 
+            sessionId, 
+            duration: elapsedSeconds, 
+            totalWords 
+          });
 
           feedbackTimeoutRef.current = setTimeout(() => {
             setIsFeedbackTimeout(true);

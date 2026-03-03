@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Share2 } from 'lucide-react';
+import { track } from '@/lib/analytics';
 
 interface ShareButtonProps {
   sessionId: string;
@@ -28,6 +29,7 @@ export function ShareButton({ sessionId }: ShareButtonProps) {
         document.body.removeChild(textArea);
       }
       
+      track('feedback_shared', { sessionId });
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {

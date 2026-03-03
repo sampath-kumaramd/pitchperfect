@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
+import { init as initAnalytics } from '@/lib/analytics';
 
 const CONSENT_COOKIE_NAME = 'pitchperfect_consent';
 
@@ -26,9 +27,7 @@ export function ConsentBanner() {
   const [showBanner, setShowBanner] = useState(false);
 
   const initializePostHog = useCallback((): void => {
-    if (typeof window !== 'undefined' && (window as unknown as { posthog?: unknown }).posthog) {
-      console.log('[ConsentBanner] PostHog initialized');
-    }
+    initAnalytics();
   }, []);
 
   useEffect(() => {
