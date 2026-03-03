@@ -1,11 +1,19 @@
-// TODO: Define persona types for type-safe persona handling
+export const PersonaType = {
+  CURIOUS: 'curious',
+  SKEPTICAL: 'skeptical',
+  FRIENDLY: 'friendly',
+  NEUTRAL: 'neutral',
+} as const;
+
+export type PersonaType = typeof PersonaType[keyof typeof PersonaType];
 
 export interface PersonaConfig {
-  id: string;
+  id: PersonaType;
   name: string;
   description: string;
-  avatar?: string;
   difficulty: 'easy' | 'medium' | 'hard';
+  icon: string;
+  interruptFrequency: string;
+  questionStyle: string;
+  backchannels: string[];
 }
-
-export type PersonaType = 'vc' | 'customer' | 'technical' | 'media';
