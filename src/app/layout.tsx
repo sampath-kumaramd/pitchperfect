@@ -1,18 +1,8 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { AmbientBackground } from "@/components/AmbientBackground";
 import { ConsentBanner } from "@/components/ConsentBanner";
-import "./globals.css";
 import { BrowserCheck } from "@/components/BrowserCheck";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: "PitchPerfect | AI Pitch Practice",
@@ -45,8 +35,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className="bg-[#0A0F1E] text-slate-100 font-['DM_Sans'] antialiased"
       >
+        <AmbientBackground />
         <BrowserCheck />
         {children}
         <ConsentBanner />
