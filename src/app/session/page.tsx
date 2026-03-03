@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SessionView } from '@/components/session/SessionView';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { FeedbackLoadingOverlay } from '@/components/FeedbackLoadingOverlay';
 import { createConversationProvider } from '@/lib/conversation/factory';
 import type { ConversationProvider } from '@/lib/conversation/types';
 import { MicCapture } from '@/lib/audio/capture';
@@ -91,18 +92,33 @@ function ErrorDisplay({ title, message, onRetry, onBackToSetup, showRetry = fals
   );
 }
 
-function FeedbackLoadingDisplay({ isTimeout }: { isTimeout: boolean }) {
-  return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-      <div className="bg-white rounded-lg shadow-md p-8 max-w-md w-full text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-        <p className="text-gray-700 font-medium mb-2">Generating your feedback...</p>
-        {isTimeout && (
-          <p className="text-amber-600 text-sm">Taking longer than expected. Please wait...</p>
-        )}
-      </div>
-    </div>
-  );
+function checkBrowserCompatibility(): { compatible: boolean; message?: string } {
+  const hasGetUserMedia = !!(navigator.mediaDevices?.getUserMedia);
+  const hasMediaRecorder = typeof window.MediaRecorder !== 'undefined';
+  const hasAudioContext = typeof window.AudioContext !== 'undefined' || typeof (window as unknown as { webkitAudioContext?: unknown }).webkitAudioContext !== 'undefined';
+  const hasWebSocket = typeof window.WebSocket !== 'undefined';
+
+  if (!hasGetUserMedia || !hasMediaRecorder || !hasAudioContext || !hasWebSocket) {
+    const missing: string[] = [];
+    if (!hasGetUserMedia) missing.push('Media Devices API');
+    if (!hasMediaRecorder) missing.push('MediaRecorder');
+    if (!hasAudioContext) missing.push('Web Audio API');
+    if (!hasWebSocket) missing.push('WebSocket');
+
+    return {
+      compatible: false,
+      message: `Your browser is missing required features: ${missing.join(', ')}.\n\nPlease use one of the following browsers:\nChrome 90+, Firefox 90+, Safari 15+, Edge 90+.\n\nMobile browsers are not supported.`,
+    };
+  }
+
+  return { compatible: true };
+}
+
+function isMobileDevice(): boolean {
+  const userAgent = navigator.userAgent.toLowerCase();
+  const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+  const isSmallScreen = window.innerWidth < 768;
+  return isMobileUA || isSmallScreen;
 }
 
 function SessionPageContent() {
@@ -127,11 +143,11 @@ function SessionPageContent() {
   const startRecording = useAudioStore((state) => state.startRecording);
   const stopRecording = useAudioStore((state) => state.stopRecording);
 
-  const [errorType, setErrorType] = useState<'mic' | 'websocket' | 'session' | 'feedback' | 'general' | null>(null);
+  const [errorType, setErrorType] = useState<'mic' | 'websocket' | 'session' | 'feedback' | 'general' | 'browser' | null>(null);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const [isReconnecting, setIsReconnecting] = useState(false);
-  const [isFeedbackTimeout, setIsFeedbackTimeout] = useState(false);
   const [isGeneratingFeedback, setIsGeneratingFeedback] = useState(false);
+  const [showMobileBanner, setShowMobileBanner] = useState(false);
 
   const providerRef = useRef<ConversationProvider | null>(null);
   const micCaptureRef = useRef<MicCapture | null>(null);
@@ -140,7 +156,6 @@ function SessionPageContent() {
   const volumeIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const initializedRef = useRef(false);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const feedbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!sessionId) {
@@ -150,6 +165,17 @@ function SessionPageContent() {
 
     if (initializedRef.current) {
       return;
+    }
+
+    const compatibilityCheck = checkBrowserCompatibility();
+    if (!compatibilityCheck.compatible) {
+      setErrorType('browser');
+      setError(compatibilityCheck.message || 'Browser not compatible');
+      return;
+    }
+
+    if (isMobileDevice()) {
+      setShowMobileBanner(true);
     }
 
     initializedRef.current = true;
@@ -333,9 +359,6 @@ function SessionPageContent() {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
     }
-    if (feedbackTimeoutRef.current) {
-      clearTimeout(feedbackTimeoutRef.current);
-    }
     if (micCaptureRef.current) {
       micCaptureRef.current.stop();
       stopRecording();
@@ -385,12 +408,8 @@ function SessionPageContent() {
             totalWords 
           });
 
-          feedbackTimeoutRef.current = setTimeout(() => {
-            setIsFeedbackTimeout(true);
-          }, 15000);
-
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 30000);
+          const timeoutId = setTimeout(() => controller.abort(), 45000);
 
           try {
             const response = await fetch(`/api/sessions/${sessionId}/feedback`, {
@@ -403,9 +422,6 @@ function SessionPageContent() {
             });
 
             clearTimeout(timeoutId);
-            if (feedbackTimeoutRef.current) {
-              clearTimeout(feedbackTimeoutRef.current);
-            }
 
             if (!response.ok) {
               const errorData = await response.json();
@@ -427,7 +443,6 @@ function SessionPageContent() {
           setErrorType('general');
         } finally {
           setIsGeneratingFeedback(false);
-          setIsFeedbackTimeout(false);
         }
       }
 
@@ -436,7 +451,17 @@ function SessionPageContent() {
   }, [elapsedSeconds, config, sessionId, entries, router, setError, stopRecording]);
 
   if (isGeneratingFeedback) {
-    return <FeedbackLoadingDisplay isTimeout={isFeedbackTimeout} />;
+    return <FeedbackLoadingOverlay />;
+  }
+
+  if (errorType === 'browser') {
+    return (
+      <ErrorDisplay
+        title="Browser Not Supported"
+        message={error || 'Your browser is not compatible with PitchPerfect'}
+        onBackToSetup={() => router.push('/setup')}
+      />
+    );
   }
 
   if (errorType === 'mic') {
@@ -526,6 +551,22 @@ function SessionPageContent() {
 
   return (
     <ErrorBoundary>
+      {showMobileBanner && (
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-3">
+          <div className="max-w-6xl mx-auto flex items-center justify-between">
+            <p className="text-amber-800 text-sm font-medium">
+              PitchPerfect works best on desktop browsers.
+            </p>
+            <button
+              onClick={() => setShowMobileBanner(false)}
+              className="text-amber-800 hover:text-amber-900 font-medium text-sm"
+              aria-label="Dismiss mobile banner"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
       <SessionView />
     </ErrorBoundary>
   );
@@ -533,16 +574,7 @@ function SessionPageContent() {
 
 export default function SessionPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-          <div className="bg-white rounded-lg shadow-md p-8 max-w-md w-full text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-            <p className="text-gray-700">Loading session...</p>
-          </div>
-        </div>
-      }
-    >
+    <Suspense>
       <SessionPageContent />
     </Suspense>
   );

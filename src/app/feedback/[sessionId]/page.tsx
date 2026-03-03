@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import { getFeedback } from '@/lib/storage';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,6 +9,39 @@ interface FeedbackPageProps {
   params: Promise<{
     sessionId: string;
   }>;
+}
+
+export async function generateMetadata({ params }: FeedbackPageProps): Promise<Metadata> {
+  const { sessionId } = await params;
+  const feedback = await getFeedback(sessionId);
+
+  if (!feedback) {
+    return {
+      title: 'Feedback Not Found | PitchPerfect',
+      description: 'This feedback session has expired or does not exist.',
+    };
+  }
+
+  const totalScore = feedback.scores.clarity + feedback.scores.confidence + feedback.scores.structure;
+  const truncatedSummary = feedback.overallSummary.length > 160
+    ? feedback.overallSummary.slice(0, 157) + '...'
+    : feedback.overallSummary;
+
+  return {
+    title: `Pitch Score: ${totalScore}/15 | PitchPerfect`,
+    description: truncatedSummary,
+    openGraph: {
+      title: `Pitch Score: ${totalScore}/15 | PitchPerfect`,
+      description: truncatedSummary,
+      type: 'website',
+      siteName: 'PitchPerfect',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `Pitch Score: ${totalScore}/15 | PitchPerfect`,
+      description: truncatedSummary,
+    },
+  };
 }
 
 export default async function FeedbackDetailPage({ params }: FeedbackPageProps) {

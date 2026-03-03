@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { PersonaPicker } from '@/components/setup/PersonaPicker';
 import { DurationSlider } from '@/components/setup/DurationSlider';
+import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { track } from '@/lib/analytics';
 import type { PersonaType } from '@/types/persona';
 
@@ -29,7 +30,10 @@ function SetupFormContent() {
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [rateLimitResetTime, setRateLimitResetTime] = useState<number | null>(null);
+  const [rateLimitSecondsRemaining, setRateLimitSecondsRemaining] = useState<number>(0);
   const formStartedTracked = useRef(false);
+  const rateLimitIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const urlUserName = searchParams.get('userName');
@@ -51,6 +55,34 @@ function SetupFormContent() {
       }
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (rateLimitResetTime) {
+      rateLimitIntervalRef.current = setInterval(() => {
+        const now = Date.now();
+        const remainingMs = rateLimitResetTime - now;
+        const remainingSeconds = Math.ceil(remainingMs / 1000);
+        
+        if (remainingSeconds <= 0) {
+          setRateLimitResetTime(null);
+          setRateLimitSecondsRemaining(0);
+          if (rateLimitIntervalRef.current) {
+            clearInterval(rateLimitIntervalRef.current);
+            rateLimitIntervalRef.current = null;
+          }
+        } else {
+          setRateLimitSecondsRemaining(remainingSeconds);
+        }
+      }, 1000);
+
+      return () => {
+        if (rateLimitIntervalRef.current) {
+          clearInterval(rateLimitIntervalRef.current);
+          rateLimitIntervalRef.current = null;
+        }
+      };
+    }
+  }, [rateLimitResetTime]);
 
   function validateUserName(value: string): string | undefined {
     if (value.length < 2) {
@@ -162,6 +194,17 @@ function SetupFormContent() {
       if (!response.ok) {
         if (response.status === 429) {
           track('rate_limit_hit');
+          
+          const retryAfter = response.headers.get('Retry-After');
+          if (retryAfter) {
+            const retryAfterSeconds = parseInt(retryAfter, 10);
+            const resetTime = Date.now() + (retryAfterSeconds * 1000);
+            setRateLimitResetTime(resetTime);
+            setRateLimitSecondsRemaining(retryAfterSeconds);
+          }
+          
+          setIsSubmitting(false);
+          return;
         }
         throw new Error('Failed to create session');
       }
@@ -180,23 +223,37 @@ function SetupFormContent() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="space-y-2">
-        <Label htmlFor="userName">Your Name</Label>
-        <Input
-          id="userName"
-          type="text"
-          placeholder="Your name"
-          value={userName}
-          onChange={(e) => setUserName(e.target.value)}
-          onFocus={handleFirstFieldFocus}
-          onBlur={() => handleBlur('userName')}
-          className={errors.userName && touched.has('userName') ? 'border-red-600' : ''}
-        />
-        {errors.userName && touched.has('userName') && (
-          <p className="text-sm text-red-600">{errors.userName}</p>
-        )}
-      </div>
+    <>
+      {isSubmitting && <LoadingOverlay message="Setting up your practice session..." />}
+      
+      {rateLimitResetTime && rateLimitSecondsRemaining > 0 && (
+        <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-md">
+          <p className="text-emerald-800 font-medium">
+            Great practice streak! Please wait before starting another session.
+          </p>
+          <p className="text-emerald-700 text-sm mt-1">
+            You can start a new session in {Math.floor(rateLimitSecondsRemaining / 60)}:{String(rateLimitSecondsRemaining % 60).padStart(2, '0')}
+          </p>
+        </div>
+      )}
+      
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="space-y-2">
+          <Label htmlFor="userName">Your Name</Label>
+          <Input
+            id="userName"
+            type="text"
+            placeholder="Your name"
+            value={userName}
+            onChange={(e) => setUserName(e.target.value)}
+            onFocus={handleFirstFieldFocus}
+            onBlur={() => handleBlur('userName')}
+            className={errors.userName && touched.has('userName') ? 'border-red-600' : ''}
+          />
+          {errors.userName && touched.has('userName') && (
+            <p className="text-sm text-red-600">{errors.userName}</p>
+          )}
+        </div>
 
       <div className="space-y-2">
         <Label htmlFor="presentationTitle">Presentation Title</Label>
@@ -254,24 +311,15 @@ function SetupFormContent() {
         />
       </div>
 
-      <Button
-        type="submit"
-        className="w-full"
-        disabled={!isFormValid() || isSubmitting}
-      >
-        {isSubmitting ? (
-          <span className="flex items-center gap-2">
-            <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            Creating session...
-          </span>
-        ) : (
-          'Start Practice Session'
-        )}
-      </Button>
-    </form>
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={!isFormValid() || isSubmitting || (rateLimitResetTime !== null && rateLimitSecondsRemaining > 0)}
+        >
+          Start Practice Session
+        </Button>
+      </form>
+    </>
   );
 }
 
