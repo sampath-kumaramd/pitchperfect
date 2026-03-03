@@ -1,0 +1,13 @@
+---
+description: Rules for library/utility modules
+globs: "**/lib/**/*.ts"
+---
+
+# Library Module Rules
+- All exports must have explicit return types.
+- Pure functions where possible. No side effects except in storage.ts.
+- ConversationProvider interface is the most critical abstraction. Never bypass it.
+- Persona prompts are template functions: (config: ConversationConfig) => string
+- Feedback prompt includes full scoring rubric verbatim. Never abbreviate.
+- Storage functions: createSession, getSession, saveFeedback, getFeedback, checkRateLimit.
+- Use null for intentional absence. undefined only for optional properties.

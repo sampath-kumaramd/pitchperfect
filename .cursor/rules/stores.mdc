@@ -1,0 +1,12 @@
+---
+description: Rules for Zustand store files
+globs: "**/stores/**/*.ts"
+---
+
+# Zustand Store Rules
+- One store per domain: session-store, audio-store, transcript-store.
+- State changes ONLY through actions. No direct state mutation.
+- Session store implements state machine with explicit transitions.
+- Include devtools middleware in development: devtools(store, { name: 'StoreName' })
+- Type the store with interface, not type alias.
+- Selectors for computed values: useSessionStore(state => state.isActive)

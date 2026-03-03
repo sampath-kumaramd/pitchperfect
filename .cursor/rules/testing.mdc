@@ -1,0 +1,12 @@
+---
+description: Rules for test files
+globs: "**/*.test.ts"
+---
+
+# Testing Rules
+- Use Vitest. Import from 'vitest'.
+- Test only src/lib/ functions. No component tests for MVP.
+- Describe blocks mirror function names.
+- Test edge cases: empty strings, zero, null, boundary values.
+- Mock external services (KV, OpenAI, Claude) with vi.mock().
+- Assertions: use explicit expect().toBe/toEqual/toThrow, not truthy/falsy.

@@ -1,0 +1,40 @@
+---
+description: PitchPerfect MVP global project rules. Stack, architecture, and principles.
+alwaysApply: true
+---
+
+# PitchPerfect MVP
+
+## Stack
+Next.js 14+ App Router, React 18, TypeScript strict, Tailwind CSS 3.4+, shadcn/ui,
+Zustand 4.x, OpenAI Realtime API, Claude Sonnet for feedback, Vercel KV, PostHog, Vercel hosting.
+
+## Architecture
+- 3 screens: /setup -> /session -> /feedback. Linear flow. No branching.
+- NO user accounts, NO login, NO auth, NO database. Vercel KV only.
+- ConversationProvider interface in src/lib/conversation/types.ts abstracts AI provider.
+- Frontend NEVER talks to OpenAI directly. Always via /api/realtime WebSocket relay.
+- All KV operations through src/lib/storage.ts. Never import @vercel/kv elsewhere.
+- Session state machine in Zustand: idle->configuring->ready->connecting->active->ending->feedback
+
+## Code Standards
+- Functional components only. function keyword, not arrows, for component declarations.
+- Props use interfaces. Named exports only (except page.tsx).
+- No enums. Use const objects with 'as const'.
+- No inline styles. Tailwind only. cn() for conditional classes from src/lib/utils.ts.
+- Event handlers: handleClick, handleSubmit, etc.
+- Import order: react/next -> third-party -> @/lib -> @/components -> @/stores -> @/types -> relative
+- Colors: primary indigo-600, success emerald-600, warning amber-600, error red-600.
+- Desktop-first. No dark mode. No mobile optimization for MVP.
+
+## Forbidden
+- Never create: Docker files, CI/CD configs, database migrations, auth configs.
+- Never use: Redux, MobX, Context for state, CSS modules, styled-components, Socket.io.
+- Never install: prisma, drizzle, next-auth, clerk, socket.io, express.
+- Never use 'any' type. Use 'unknown' for truly unknown values.
+
+## After EVERY change
+- Run: npm run type-check (tsc --noEmit)
+- Run: npm run lint
+- Verify no new TypeScript errors introduced.
+- Don't do anything else beyond the specific task requested.

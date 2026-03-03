@@ -1,0 +1,278 @@
+# PitchPerfect MVP — Cursor Rules
+# Last updated: March 2026 | AnoNa Labs
+# This file is the single source of truth for all code generation in this project.
+
+## Product Overview
+PitchPerfect is a web-based AI-powered pitch practice platform. Users rehearse sales presentations against simulated AI customer personas and receive real-time coaching metrics and post-session feedback scores. The MVP validates whether AI practice measurably improves pitch delivery.
+
+Core flow: Setup Page → Practice Session → Feedback Summary (3 screens, linear)
+
+## Non-Negotiable Principles
+1. ZERO FRICTION: No signup, no login, no credit card. User starts practicing within 30 seconds.
+2. CONVERSATION FIRST: The AI conversation must feel natural. If this does not work, nothing else matters.
+3. SHIP COMPLETE: One polished flow beats ten half-built features.
+4. INSTRUMENT EVERYTHING: Every session produces data for analytics.
+5. DESIGN FOR THE SWITCH: Abstract the AI provider. OpenAI Realtime today, PersonaPlex tomorrow.
+
+## Technology Stack
+- **Framework:** Next.js 14+ (App Router) with TypeScript (strict mode)
+- **UI:** React 18 functional components + Tailwind CSS 3.4+ + shadcn/ui
+- **State:** Zustand 4.x (one store per domain: session-store, audio-store, transcript-store)
+- **Conversation AI:** OpenAI Realtime API (gpt-4o-realtime-preview-2024-12-17) via WebSocket relay
+- **Feedback AI:** Claude Sonnet (claude-sonnet-4-5-20250929) for post-session transcript analysis
+- **Storage:** Vercel KV (Redis) with TTLs. NO PostgreSQL. NO persistent database.
+- **Analytics:** PostHog (only initialized after GDPR consent)
+- **Hosting:** Vercel (frontend + API routes + KV + analytics)
+- **Audio:** Web Audio API + MediaRecorder (16kHz mono, echo cancellation, noise suppression)
+- **Icons:** Lucide React
+
+## Explicitly NOT Using
+- PostgreSQL, Prisma, or any relational database
+- Redux, MobX, or React Context for state management
+- Styled Components, CSS Modules, or any CSS-in-JS
+- Socket.io (use native WebSocket API)
+- NextAuth, Clerk, or any authentication library
+- ElevenLabs, Azure TTS, or any separate TTS service
+- Docker, Kubernetes, or any containerization
+- Class components, enums, default exports (except page.tsx)
+
+## Project Structure
+```
+src/
+├── app/
+│   ├── layout.tsx                # Root layout: fonts, metadata, analytics
+│   ├── page.tsx                  # Landing page: hero + CTA to /setup
+│   ├── globals.css               # Tailwind directives + custom animations ONLY
+│   ├── setup/page.tsx            # Setup form + persona picker
+│   ├── session/page.tsx          # Live practice session
+│   ├── feedback/
+│   │   ├── page.tsx              # Feedback summary (own session)
+│   │   └── [sessionId]/page.tsx  # Shareable feedback (public)
+│   └── api/
+│       ├── sessions/
+│       │   ├── route.ts          # POST: create session
+│       │   └── [id]/
+│       │       ├── route.ts      # GET: session data
+│       │       └── feedback/route.ts  # POST: generate feedback
+│       └── realtime/route.ts     # WebSocket: audio relay to OpenAI
+│
+├── components/
+│   ├── ui/                       # shadcn/ui primitives
+│   ├── setup/
+│   │   ├── SetupForm.tsx
+│   │   ├── PersonaPicker.tsx
+│   │   └── DurationSlider.tsx
+│   ├── session/
+│   │   ├── SessionView.tsx       # Layout orchestrator
+│   │   ├── TranscriptPane.tsx    # Scrolling conversation
+│   │   ├── TimerBar.tsx          # Countdown + progress
+│   │   ├── AudioVisualizer.tsx   # CSS pulse orb
+│   │   ├── WPMGauge.tsx          # Real-time WPM display
+│   │   ├── MicControls.tsx       # Mute/unmute + stop
+│   │   └── CoachingHUD.tsx       # Sidebar with live metrics
+│   └── feedback/
+│       ├── ScoreCard.tsx         # Single score gauge (1-5)
+│       ├── FeedbackSection.tsx   # Strengths / improvements
+│       ├── SessionSummary.tsx    # Overall summary
+│       └── ShareButton.tsx       # Copy shareable link
+│
+├── lib/
+│   ├── conversation/
+│   │   ├── types.ts              # ConversationProvider interface
+│   │   ├── openai-realtime.ts    # OpenAI Realtime implementation
+│   │   └── index.ts              # Provider factory
+│   ├── audio/
+│   │   ├── capture.ts            # Mic capture setup
+│   │   ├── playback.ts           # Agent audio queue
+│   │   └── analysis.ts           # WPM calculator, filler detector
+│   ├── personas/
+│   │   ├── types.ts              # Persona type definitions
+│   │   ├── prompts.ts            # System prompt templates
+│   │   └── config.ts             # Persona metadata
+│   ├── feedback/
+│   │   ├── generate.ts           # Claude API call
+│   │   ├── prompt.ts             # Feedback prompt with rubric
+│   │   └── types.ts              # Response types
+│   ├── storage.ts                # ALL Vercel KV operations
+│   ├── rate-limit.ts             # IP-based rate limiting
+│   └── utils.ts                  # cn(), formatTime(), generateId()
+│
+├── stores/
+│   ├── session-store.ts          # Session config + state machine
+│   ├── audio-store.ts            # Audio recording/playback state
+│   └── transcript-store.ts       # Transcript accumulation + WPM
+│
+└── types/
+    ├── session.ts
+    ├── feedback.ts
+    └── persona.ts
+```
+
+## Critical Architecture: ConversationProvider Interface
+This is the MOST IMPORTANT abstraction. The frontend NEVER talks directly to OpenAI.
+
+```typescript
+interface ConversationProvider {
+  connect(config: ConversationConfig): Promise<void>;
+  sendAudio(chunk: ArrayBuffer): void;
+  onTranscript(cb: (entry: TranscriptEntry) => void): void;
+  onAgentAudio(cb: (chunk: ArrayBuffer) => void): void;
+  onAgentTranscript(cb: (entry: TranscriptEntry) => void): void;
+  onError(cb: (error: Error) => void): void;
+  onStateChange(cb: (state: ConnectionState) => void): void;
+  getFullTranscript(): TranscriptEntry[];
+  disconnect(): Promise<void>;
+  isConnected(): boolean;
+}
+
+type ConnectionState = 'connecting' | 'connected' | 'disconnecting' | 'disconnected' | 'error';
+```
+
+Audio relay flow: Browser → WebSocket → /api/realtime → OpenAI Realtime → back
+API key stays on server. Session logging happens at relay. Provider swap = backend only change.
+
+## Session State Machine
+States: idle → configuring → ready → connecting → active → ending → feedback → (back to configuring)
+Error state reachable from: connecting, active, ending. Always returns to configuring.
+
+```typescript
+interface SessionStore {
+  state: 'idle' | 'configuring' | 'ready' | 'connecting' | 'active' | 'ending' | 'feedback' | 'error';
+  config: ConversationConfig | null;
+  sessionId: string | null;
+  startTime: number | null;
+  elapsedSeconds: number;
+  error: string | null;
+  
+  setConfig: (config: Partial<ConversationConfig>) => void;
+  startSession: () => Promise<void>;
+  endSession: () => Promise<void>;
+  resetSession: () => void;
+  setError: (error: string) => void;
+  tick: () => void;
+}
+```
+
+## Persona System (4 Personas for MVP)
+Each persona = system prompt with 3 parts: Identity Block + Behavior Rules + Context Injection
+
+| Persona   | Difficulty | Interrupts              | Question Style           | Backchannels               |
+|-----------|-----------|------------------------|--------------------------|---------------------------|
+| Curious   | Medium    | Every 30-45s           | Deep-dive, exploratory   | "Fascinating!", "Tell me more" |
+| Skeptical | Hard      | When claims lack proof  | Evidence-seeking         | "Hmm", "I'm not sure"    |
+| Friendly  | Easy      | Rarely                 | Clarifying, supportive   | "That's great!", "Love it" |
+| Neutral   | Medium    | At natural pauses      | Professional, balanced   | "Okay", "I see"           |
+
+Store prompts in `src/lib/personas/prompts.ts` as template literal functions accepting ConversationConfig.
+NEVER break character in prompts. Personas are buyers, not AI assistants.
+
+## API Contracts
+
+### POST /api/sessions
+Request: { userName, presentationTitle, presentationContext, persona, durationMinutes }
+Response 201: { sessionId, config, createdAt }
+Validation: userName (2-50 chars), title (5-100), context (10-500), persona (enum), duration (2-10)
+Rate limit: 10 sessions per IP per hour. Store in KV with 24h TTL.
+
+### POST /api/sessions/[id]/feedback
+Request: { transcript: TranscriptEntry[], metrics: { averageWPM, fillerWordCount, fillerWords, totalSilenceSeconds, totalWords } }
+Response 200: { scores: { clarity, confidence, structure }, overallSummary, strengths[], improvements[], notableMoments[], shareUrl }
+Implementation: Retrieve config from KV → Build prompt with rubric → Call Claude → Parse JSON → Store in KV (7d TTL)
+
+### WebSocket /api/realtime
+Query: ?sessionId={id}
+Protocol: Validate sessionId → Open WebSocket to OpenAI → Send session.create with persona prompt → Relay audio bidirectionally → Log transcript events → Clean up on disconnect
+
+## Feedback Scoring Rubric (Include verbatim in Claude prompt)
+| Score | Clarity                    | Confidence                      | Structure                        |
+|-------|---------------------------|---------------------------------|----------------------------------|
+| 1     | Incoherent                | Constant hesitation, many fillers| No discernible flow              |
+| 2     | Vague, key points unclear | Frequent pauses, uncertain      | Weak transitions                 |
+| 3     | Generally clear           | Moderate pace, some fillers     | Basic intro-body-end present     |
+| 4     | Clear with minor gaps     | Steady delivery, few fillers    | Logical flow, good transitions   |
+| 5     | Crystal clear, precise    | Commanding, assertive           | Compelling arc, strong open/close|
+
+Output: structured JSON only. No markdown. No preamble.
+
+## Real-Time Metrics (Client-Side)
+- **WPM:** Rolling 30-sec window. Green (130-160), yellow (100-130/160-190), red (<100/>190). Update every 2s.
+- **Timer:** Countdown. Flash at 60s remaining. Urgent at 15s. Auto-end at 0.
+- **Filler Words:** Detect: um, uh, like, you know, basically, actually, so, right. Count only, no alerts during session.
+- **Audio Visualizer:** CSS pulse orb. States: idle (gray), listening (blue), speaking (indigo), error (red).
+
+## Audio Pipeline
+- Mic: getUserMedia({ audio: { channelCount: 1, sampleRate: 16000, echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+- Recording: MediaRecorder with 100ms timeslice. Format: audio/webm;codecs=opus (Chrome/Firefox) or audio/mp4 (Safari).
+- Playback: AudioContext queue (NOT <audio> element). Exposes getVolume() for visualizer.
+
+## Storage Schema (Vercel KV)
+- `session:{sessionId}` → { config, createdAt, status } → TTL: 24 hours
+- `feedback:{sessionId}` → { scores, summary, strengths, improvements, notableMoments, metrics } → TTL: 7 days
+- `ratelimit:{ip}` → request count → TTL: 1 hour
+All KV operations go through `src/lib/storage.ts`. NEVER access KV directly from components or API routes.
+
+## Error Handling
+Every error = user-friendly message + recovery action + PostHog tracking event.
+- Mic denied → instructions to enable + retry button
+- WebSocket disconnect → auto-reconnect (3 attempts, 2s interval) → manual reconnect button
+- API timeout → spinner 10s → retry or end with partial feedback
+- Rate limit → show cooldown timer → disable start button
+- Unsupported browser → show supported browser list → no retry
+- Session not found → "expired after 24h" → link to /setup
+
+## Coding Standards
+- TypeScript strict mode. No `any`. Use `unknown` for truly unknown values.
+- Interfaces for object shapes. Types for unions/intersections.
+- Explicit return types on all exported functions.
+- No enums. Use `const X = { ... } as const`.
+- Null for intentional absence. Undefined only for optional properties.
+- Functional components only. Use `function` keyword, not arrow functions.
+- Every component has a Props interface. Named exports only (except page.tsx).
+- Hooks order: useState → useEffect → custom hooks → handlers → render.
+- No inline styles. Tailwind only. Use cn() for conditional classes.
+- Event handlers: handleClick, handleSubmit, handleChange.
+- Every async operation shows a loading indicator.
+- Import order: react/next → third-party → lib → components → stores → types → relative (blank line between groups)
+- File naming: Components PascalCase.tsx, utils kebab-case.ts, stores kebab-case-store.ts
+- Colors: primary indigo-600, success emerald-600, warning amber-600, error red-600
+- Desktop-first. No dark mode. No mobile optimization (show "Best on desktop" notice).
+
+## Environment Variables (.env.local)
+```
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+KV_REST_API_URL=https://...
+KV_REST_API_TOKEN=...
+NEXT_PUBLIC_POSTHOG_KEY=phc_...
+NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+RATE_LIMIT_MAX=10
+SESSION_TTL_HOURS=24
+FEEDBACK_TTL_DAYS=7
+```
+Validate required vars on server startup. Throw if missing.
+
+## Analytics Events (PostHog)
+- page_viewed, setup_form_started, persona_selected
+- session_started, session_completed, session_stopped, session_error
+- feedback_generated, feedback_shared, session_retried
+- mic_permission_denied, rate_limit_hit
+
+## Testing Priorities
+1. Full flow in Chrome, Firefox, Safari (desktop) — manual testing
+2. Mic permission grant/deny/revoke scenarios
+3. Timer accuracy and auto-end
+4. Error recovery: WebSocket disconnect, API timeout
+5. Rate limiting enforcement
+6. Shareable link generation and display
+Unit tests (Vitest): lib/ functions only. No E2E tests for MVP.
+
+## Files NOT to Create
+- No Docker/docker-compose files
+- No CI/CD pipeline configs
+- No database migration files
+- No auth configuration files
+- No Redux store or React context providers
+- No CSS module or styled-component files
+- No test files until core features work end-to-end
+- No README until launch

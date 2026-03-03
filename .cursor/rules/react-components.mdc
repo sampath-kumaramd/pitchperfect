@@ -1,0 +1,15 @@
+---
+description: Rules for React component files
+globs: "**/*.tsx"
+---
+
+# React Component Rules
+- Use function keyword: `export function ComponentName(props: Props) {}`
+- Every component has a Props interface even if empty.
+- Hooks order: useState -> useEffect -> custom hooks -> handlers -> render.
+- Loading states required for every async operation.
+- Error boundaries at page level. Components catch errors in handlers.
+- Use shadcn/ui primitives from @/components/ui/.
+- Audio playback via AudioContext, NEVER <audio> element.
+- No default exports except page.tsx (Next.js requirement).
+- console.error with context: console.error('[ComponentName] description:', error)

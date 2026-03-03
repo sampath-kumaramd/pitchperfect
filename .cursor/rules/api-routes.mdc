@@ -1,0 +1,15 @@
+---
+description: Rules for Next.js API route handlers
+globs: "**/api/**/*.ts"
+---
+
+# API Route Rules
+- Wrap entire handler in try/catch. Never let errors propagate unhandled.
+- Return JSON always. Errors: { error: string, code: string } with HTTP status.
+- Validate ALL inputs. Use Zod schemas for request body validation.
+- Rate limit by IP (src/lib/rate-limit.ts). Check before processing.
+- Access KV only through src/lib/storage.ts. Never import @vercel/kv directly.
+- Log errors: console.error('[API /path] description:', error)
+- POST /api/sessions: create session, KV 24h TTL.
+- POST /api/sessions/[id]/feedback: transcript -> Claude -> JSON -> KV 7d TTL.
+- /api/realtime: WebSocket relay browser <-> OpenAI Realtime. API key stays server-side.
