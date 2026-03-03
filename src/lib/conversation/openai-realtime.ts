@@ -7,7 +7,7 @@ export function createOpenAIRealtimeProvider(): ConversationProvider {
     connect: async () => {
       throw new Error('Not implemented');
     },
-    disconnect: () => {
+    disconnect: async () => {
       throw new Error('Not implemented');
     },
     sendAudio: () => {
@@ -16,7 +16,22 @@ export function createOpenAIRealtimeProvider(): ConversationProvider {
     onTranscript: () => {
       throw new Error('Not implemented');
     },
-    onAudioReceived: () => {
+    onAgentAudio: () => {
+      throw new Error('Not implemented');
+    },
+    onAgentTranscript: () => {
+      throw new Error('Not implemented');
+    },
+    onError: () => {
+      throw new Error('Not implemented');
+    },
+    onStateChange: () => {
+      throw new Error('Not implemented');
+    },
+    getFullTranscript: () => {
+      throw new Error('Not implemented');
+    },
+    isConnected: () => {
       throw new Error('Not implemented');
     },
   };

@@ -1,11 +1,14 @@
-// TODO: Define ConversationProvider interface and related types for AI abstraction
+import type { ConversationConfig, TranscriptEntry, ConnectionState } from '@/types/session';
 
 export interface ConversationProvider {
-  connect: () => Promise<void>;
-  disconnect: () => void;
-  sendAudio: (audioData: ArrayBuffer) => void;
-  onTranscript: (callback: (text: string, speaker: string) => void) => void;
-  onAudioReceived: (callback: (audio: ArrayBuffer) => void) => void;
+  connect(config: ConversationConfig): Promise<void>;
+  sendAudio(chunk: ArrayBuffer): void;
+  onTranscript(cb: (entry: TranscriptEntry) => void): void;
+  onAgentAudio(cb: (chunk: ArrayBuffer) => void): void;
+  onAgentTranscript(cb: (entry: TranscriptEntry) => void): void;
+  onError(cb: (error: Error) => void): void;
+  onStateChange(cb: (state: ConnectionState) => void): void;
+  getFullTranscript(): TranscriptEntry[];
+  disconnect(): Promise<void>;
+  isConnected(): boolean;
 }
-
-export type ConversationStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
