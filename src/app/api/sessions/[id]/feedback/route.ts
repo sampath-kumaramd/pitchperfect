@@ -60,6 +60,10 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const timeoutId = setTimeout(() => {
+    console.warn('[API POST /sessions/[id]/feedback] Request taking longer than expected');
+  }, 15000);
+
   try {
     const { id } = await params;
     const body = await request.json();
@@ -99,8 +103,10 @@ export async function POST(
 
     await saveFeedback(id, feedback);
 
+    clearTimeout(timeoutId);
     return NextResponse.json(feedback, { status: 200 });
   } catch (error) {
+    clearTimeout(timeoutId);
     console.error('[API /sessions/[id]/feedback]', error);
 
     if (error instanceof Error) {
@@ -121,6 +127,16 @@ export async function POST(
             code: 'STORAGE_ERROR',
           },
           { status: 500 }
+        );
+      }
+
+      if (error.message.includes('timeout') || error.message.includes('ECONNRESET')) {
+        return NextResponse.json(
+          {
+            error: 'Request timeout while generating feedback',
+            code: 'TIMEOUT_ERROR',
+          },
+          { status: 504 }
         );
       }
     }

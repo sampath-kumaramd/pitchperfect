@@ -1,4 +1,4 @@
-import type { TranscriptEntry, ConversationConfig } from '@/types/session';
+import type { TranscriptEntry } from '@/types/session';
 import type { SessionMetrics } from '@/types/feedback';
 import type { PersonaType } from '@/types/persona';
 

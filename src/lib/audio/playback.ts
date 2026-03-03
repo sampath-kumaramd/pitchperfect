@@ -90,7 +90,7 @@ export class AudioPlaybackQueue {
     if (this.currentSource) {
       try {
         this.currentSource.stop();
-      } catch (error) {
+      } catch {
         // Source may already be stopped
       }
       this.currentSource = null;
